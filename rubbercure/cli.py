@@ -2,12 +2,14 @@
 
 五个子命令覆盖日常使用：
 
-``serve``   启动控制台 HTTP 服务，可选地在启动后探测页面；
-``demo``    在本地跑一遍完整流程（硫化顺序 → 控制周期 → 并发探测 → 开模与
-            调度 → 停运顺序），用于交付前的真实运行检查；
-``status``  打印当前状态快照；
-``config``  打印生效配置；
-``reset``   清掉各台硫化机的落盘状态。
+``serve``      启动控制台 HTTP 服务，可选地在启动后探测页面；
+``demo``       在本地跑一遍完整流程（硫化顺序 → 控制周期 → 并发探测 → 开模与
+               调度 → 停运顺序），用于交付前的真实运行检查；
+``cool-demo``  用集总热容模型演示冷却水按进出水温差自动调流量、每模计量与
+               冷透自动停泵，并与恒流全开对比省水；
+``status``     打印当前状态快照；
+``config``     打印生效配置；
+``reset``      清掉各台硫化机的落盘状态。
 """
 
 from __future__ import annotations
@@ -113,6 +115,15 @@ def _cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_cool_demo(args: argparse.Namespace) -> int:
+    """温差调流演示：厚模/薄模各一模，与恒流全开对比。"""
+
+    config = load_config(args.config) if args.config else default_config()
+    platform = build_platform(config, clock=ManualClock(), storage_root=args.storage_root)
+    _dump(platform.cool_demo(dt=args.dt))
+    return 0
+
+
 def _cmd_status(args: argparse.Namespace) -> int:
     platform = _build(args)
     payload = platform.status()
@@ -158,6 +169,10 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--report-rounds", type=int, default=12, help="完成上报并发探测轮数")
     demo.add_argument("--fast", action="store_true", help="使用可推进时钟，跳过真实等待")
     demo.set_defaults(func=_cmd_demo)
+
+    cool_demo = sub.add_parser("cool-demo", help="温差自动调流演示（厚模/薄模对比恒流）")
+    cool_demo.add_argument("--dt", type=float, default=1.0, help="仿真步长秒")
+    cool_demo.set_defaults(func=_cmd_cool_demo)
 
     status = sub.add_parser("status", help="打印状态快照")
     status.set_defaults(func=_cmd_status)

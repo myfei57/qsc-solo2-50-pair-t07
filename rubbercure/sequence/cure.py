@@ -93,7 +93,7 @@ class CureSequence:
             "mapping_registered", "mold", mold_id=plan.mold_id, generation=mapping.generation
         )
 
-        press.load_mold(plan.mold_id)
+        press.load_mold(plan.mold_id, thickness_mm=plan.thickness_mm)
         profile = BatchProfile.resolve(
             plan.mold_id, plan.thickness_mm, self.registry, self.curves
         )

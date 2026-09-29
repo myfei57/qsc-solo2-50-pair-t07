@@ -226,13 +226,24 @@ class TimerLimits:
 
 @dataclass(frozen=True)
 class CoolLimits:
-    """冷却水流量与温度限值。"""
+    """冷却水流量、温差控制与每模限值。
+
+    冷却水不再恒流常开：调节阀按进出口温差闭环调流量，温差连续低于
+    ``stop_delta_c`` 达到 ``stop_confirm_s`` 判定模具冷透，自动关阀停泵；
+    超过 ``max_cool_s`` 仍未冷透则超时告警，交给人工。
+    """
 
     rated_flow_m3_h: float
     min_flow_m3_h: float
     alarm_inlet_c: float
     alarm_outlet_c: float
     drain_hold_s: float
+    target_delta_c: float
+    stop_delta_c: float
+    stop_confirm_s: float
+    max_cool_s: float
+    valve_min_pct: float
+    water_specific_heat_kj_kg_k: float
 
     @classmethod
     def from_mapping(cls, section: Mapping[str, Any]) -> "CoolLimits":
@@ -242,11 +253,23 @@ class CoolLimits:
             alarm_inlet_c=_number(section, "alarm_inlet_c"),
             alarm_outlet_c=_number(section, "alarm_outlet_c"),
             drain_hold_s=_number(section, "drain_hold_s", minimum=0.0),
+            target_delta_c=_number(section, "target_delta_c", minimum=0.1),
+            stop_delta_c=_number(section, "stop_delta_c", minimum=0.05),
+            stop_confirm_s=_number(section, "stop_confirm_s", minimum=1.0),
+            max_cool_s=_number(section, "max_cool_s", minimum=1.0),
+            valve_min_pct=_number(section, "valve_min_pct", minimum=0.0),
+            water_specific_heat_kj_kg_k=_number(
+                section, "water_specific_heat_kj_kg_k", minimum=0.1
+            ),
         )
         if limits.min_flow_m3_h > limits.rated_flow_m3_h:
             raise ConfigError("冷却最小流量不得高于额定流量", component="config")
         if limits.alarm_inlet_c > limits.alarm_outlet_c:
             raise ConfigError("冷却进水告警温度不得高于出水告警温度", component="config")
+        if limits.stop_delta_c >= limits.target_delta_c:
+            raise ConfigError("冷却停运温差必须低于目标温差", component="config")
+        if limits.valve_min_pct > 100.0:
+            raise ConfigError("调节阀最小开度不得超过 100%", component="config")
         return limits
 
     def as_dict(self) -> dict:
@@ -256,6 +279,12 @@ class CoolLimits:
             "alarm_inlet_c": self.alarm_inlet_c,
             "alarm_outlet_c": self.alarm_outlet_c,
             "drain_hold_s": self.drain_hold_s,
+            "target_delta_c": self.target_delta_c,
+            "stop_delta_c": self.stop_delta_c,
+            "stop_confirm_s": self.stop_confirm_s,
+            "max_cool_s": self.max_cool_s,
+            "valve_min_pct": self.valve_min_pct,
+            "water_specific_heat_kj_kg_k": self.water_specific_heat_kj_kg_k,
         }
 
 
@@ -373,10 +402,16 @@ def default_config() -> PlatformConfig:
         timer=TimerLimits(default_nominal_s=600.0, shortfall_ratio=0.05, overrun_ratio=0.08),
         cool=CoolLimits(
             rated_flow_m3_h=18.0,
-            min_flow_m3_h=6.0,
+            min_flow_m3_h=0.5,
             alarm_inlet_c=32.0,
             alarm_outlet_c=48.0,
             drain_hold_s=30.0,
+            target_delta_c=5.0,
+            stop_delta_c=1.5,
+            stop_confirm_s=20.0,
+            max_cool_s=1200.0,
+            valve_min_pct=0.0,
+            water_specific_heat_kj_kg_k=4.18,
         ),
         batch=BatchLimits(dispatch_window_s=180.0, max_queue=12),
         pages=("press", "steam", "timer", "alarms"),

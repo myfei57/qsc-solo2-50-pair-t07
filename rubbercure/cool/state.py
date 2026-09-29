@@ -24,7 +24,7 @@ class CoolStateMachine:
     """记录相位迁移，非法迁移直接拒绝。"""
 
     _ALLOWED = {
-        CoolPhase.IDLE: (CoolPhase.CIRCULATING,),
+        CoolPhase.IDLE: (CoolPhase.CIRCULATING, CoolPhase.DRAINING),
         CoolPhase.CIRCULATING: (CoolPhase.DRAINING, CoolPhase.IDLE),
         CoolPhase.DRAINING: (CoolPhase.STOPPED, CoolPhase.CIRCULATING),
         CoolPhase.STOPPED: (CoolPhase.IDLE,),

@@ -121,6 +121,25 @@ class ConsoleAPI:
         except RubberCureError as error:
             return {"ok": False, "error": self.platform.note_error(error)}
 
+    def cool_drive(self, payload: dict) -> dict:
+        """驱动一台硫化机当前模次的冷却闭环到冷透停泵。"""
+
+        try:
+            return {
+                "ok": True,
+                "cooling": self.platform.drive_cooling_shot(
+                    str(payload.get("press_id", "press-01")),
+                    dt=float(payload.get("dt", 1.0)),
+                ),
+            }
+        except RubberCureError as error:
+            return {"ok": False, "error": self.platform.note_error(error)}
+
+    def cool_demo(self) -> dict:
+        """温差自动调流演示：厚模/薄模与恒流全开对比。"""
+
+        return {"ok": True, "comparison": self.platform.cool_demo()}
+
     def stop(self, payload: dict) -> dict:
         try:
             return {

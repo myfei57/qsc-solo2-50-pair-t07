@@ -33,10 +33,21 @@ limits:
     overrun_ratio: 0.08
   cool:
     rated_flow_m3_h: 18.0
-    min_flow_m3_h: 6.0
+    # 仅用于断流/堵管告警；闭环末段流量本来就会自动降到很低
+    min_flow_m3_h: 0.5
     alarm_inlet_c: 32.0
     alarm_outlet_c: 48.0
     drain_hold_s: 30.0
+    # 调节阀按进出水温差闭环：温差大→开大，温差小→关小
+    target_delta_c: 5.0
+    # 温差连续低于该值并保持确认时长，判定模具冷透，自动关阀停泵
+    stop_delta_c: 1.5
+    stop_confirm_s: 20.0
+    # 冷却超过此时长仍未冷透则超时告警，交人工处理
+    max_cool_s: 1200.0
+    # 冷却期间调节阀的最小开度（0 表示末段允许完全关小）
+    valve_min_pct: 0.0
+    water_specific_heat_kj_kg_k: 4.18
   batch:
     dispatch_window_s: 180.0
     max_queue: 12

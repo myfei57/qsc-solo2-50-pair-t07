@@ -18,6 +18,7 @@ from .batch.batch import BatchScheduler
 from .batch.profile import BatchProfile
 from .clock import Clock, SystemClock
 from .config import PlatformConfig, default_config
+from .cool.simulator import MoldThermalSpec, ThermalModel, compare_control_modes
 from .errors import RubberCureError
 from .eventbus import Event, EventBus
 from .mold.mapping import SensorMapBook
@@ -249,8 +250,8 @@ class Platform:
             report["topology_missing"] = sequence.verify_topology(self.topology)
             return report
 
-    def run_open(self, press_id: str = DEFAULT_PRESS_ID) -> dict:
-        """在一台硫化机上跑完整的开模顺序。"""
+    def run_open(self, press_id: str = DEFAULT_PRESS_ID, *, cool_dt: float = 1.0) -> dict:
+        """在一台硫化机上跑完整的开模顺序（含按温差自动调流与冷透停泵）。"""
 
         with self._lock:
             sequence = OpenSequence(
@@ -258,6 +259,10 @@ class Platform:
                 bus=self.bus,
                 latch=self.latch,
                 press=self.press(press_id),
+                config=self.config,
+                registry=self.registry,
+                curves=self.curves,
+                cool_dt=cool_dt,
             )
             return sequence.run()
 
@@ -416,6 +421,65 @@ class Platform:
             "ordered": first[:5],
         }
 
+    def cool_demo(self, dt: float = 1.0) -> dict:
+        """跑温差调流演示：厚模与薄模各一模，对比恒流全开。
+
+        用集总热容模型模拟模具与水路，驱动真实的冷却温差闭环；厚模热容大、
+        降温慢，薄模热容小、降温快，同一套调流与冷透判停参数都要能自适应。
+        """
+
+        specs = (
+            MoldThermalSpec(
+                mold_id="mold-thin",
+                thickness_mm=3.0,
+                heat_capacity_kj_k=200.0,
+                conductance_kw_k=4.0,
+            ),
+            MoldThermalSpec(
+                mold_id="mold-thick",
+                thickness_mm=12.0,
+                heat_capacity_kj_k=800.0,
+                conductance_kw_k=4.0,
+            ),
+        )
+        return compare_control_modes(self.config.cool, specs, dt=dt)
+
+    def drive_cooling_shot(self, press_id: str, dt: float = 1.0, *, max_steps: int | None = None) -> dict:
+        """驱动一台硫化机的当前模次冷却到冷透停泵，返回每模报表。
+
+        真机由现场仪表周期上报进出口温度并调用本循环；演示／验证环境没有
+        仪表，用与 :meth:`cool_demo` 相同的集总热模型按厚度折算模具热容，
+        生成进水/出水温度。无论温度从哪来，调阀、计量与冷透判停都走冷却
+        回路同一套组件。
+        """
+
+        unit = self.press(press_id).cooling
+        thickness = self._cooling_thickness(press_id)
+        spec = MoldThermalSpec(
+            mold_id=unit.mold_id or press_id,
+            thickness_mm=thickness,
+            heat_capacity_kj_k=60.0 + 16.0 * thickness,
+            conductance_kw_k=4.0,
+        )
+        model = ThermalModel(spec, self.config.cool.water_specific_heat_kj_kg_k)
+        ceiling = max_steps if max_steps is not None else int(self.config.cool.max_cool_s / dt) + 2
+        result: dict = {}
+        for _ in range(ceiling):
+            self.clock.advance(dt)
+            outlet, _delta, _power = model.step(unit.circulation.flow_m3_h, dt)
+            result = unit.regulate(spec.inlet_c, outlet, dt)
+            if result["judge"]["done"] or result["judge"]["timed_out"]:
+                break
+        return {"shot": unit.last_shot or {}, "last_step": result}
+
+    def _cooling_thickness(self, press_id: str) -> float:
+        """取在机模具的投产厚度，缺省回落平台默认厚度。"""
+
+        unit = self.press(press_id)
+        if unit.mold_thickness_mm is not None:
+            return unit.mold_thickness_mm
+        return self.config.press.default_thickness_mm
+
     def note_error(self, error: RubberCureError) -> dict:
         """把平台异常写入审计，返回落盘记录。"""
 
@@ -491,6 +555,8 @@ class Platform:
                 "/api/open",
                 "/api/dispatch",
                 "/api/stop",
+                "/api/cool-drive",
+                "/api/cool-demo",
                 "/api/step",
                 "/api/enqueue",
                 "/api/remap",

@@ -60,6 +60,7 @@ class CuringPress:
         self.cooling = CoolingUnit(clock, bus, config.cool)
         self._state = PressStateMachine()
         self._mold_id: str | None = None
+        self._mold_thickness_mm: float | None = None
         self._cycles = 0
         self._last_step: dict = {}
         self._lock = threading.RLock()
@@ -76,12 +77,13 @@ class CuringPress:
     def transition(self, target: PressPhase) -> PressPhase:
         return self._state.transition(target)
 
-    def load_mold(self, mold_id: str) -> dict:
+    def load_mold(self, mold_id: str, thickness_mm: float | None = None) -> dict:
         """装模：把模具挂到本机。"""
 
         with self._lock:
             self.transition(PressPhase.MOLD_LOADED)
             self._mold_id = mold_id
+            self._mold_thickness_mm = None if thickness_mm is None else float(thickness_mm)
         self.bus.publish(
             Event.of("press", "press", "mold_loaded", subject=mold_id, press_id=self.press_id)
         )
@@ -90,6 +92,12 @@ class CuringPress:
     def clear_mold(self) -> None:
         with self._lock:
             self._mold_id = None
+            self._mold_thickness_mm = None
+
+    @property
+    def mold_thickness_mm(self) -> float | None:
+        with self._lock:
+            return self._mold_thickness_mm
 
     def require_mold(self) -> str:
         """返回在机模具；没有则报错。"""
