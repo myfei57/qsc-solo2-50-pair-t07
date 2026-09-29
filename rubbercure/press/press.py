@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from ..clock import Clock
 from ..config import PlatformConfig
 from ..cool.cool import CoolingUnit
+from ..cool.state import CoolPhase
 from ..errors import InterlockError
 from ..eventbus import Event, EventBus
 from ..lift.lift import LiftUnit
@@ -111,9 +112,15 @@ class CuringPress:
             measured = reading_c.average_c()
             if self._state.phase is PressPhase.CURING:
                 advance_cure(self.timer, dt, self.bus, measured_c=measured)
-            cooling = self.cooling.measure(
-                self.config.cool.alarm_inlet_c - 6.0, measured * 0.42
-            )
+            if self.cooling.phase is CoolPhase.CIRCULATING:
+                # 冷却运行中按真实温差闭环：调流量、积水量、判到位。
+                cooling = self.cooling.regulate(
+                    self.config.cool.alarm_inlet_c - 6.0, measured * 0.42, dt
+                )
+            else:
+                cooling = self.cooling.measure(
+                    self.config.cool.alarm_inlet_c - 6.0, measured * 0.42
+                )
             self._last_step = {
                 "cycle": self._cycles,
                 "press_id": self.press_id,

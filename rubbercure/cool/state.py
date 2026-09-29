@@ -25,7 +25,7 @@ class CoolStateMachine:
 
     _ALLOWED = {
         CoolPhase.IDLE: (CoolPhase.CIRCULATING,),
-        CoolPhase.CIRCULATING: (CoolPhase.DRAINING, CoolPhase.IDLE),
+        CoolPhase.CIRCULATING: (CoolPhase.DRAINING, CoolPhase.STOPPED, CoolPhase.IDLE),
         CoolPhase.DRAINING: (CoolPhase.STOPPED, CoolPhase.CIRCULATING),
         CoolPhase.STOPPED: (CoolPhase.IDLE,),
     }

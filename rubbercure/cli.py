@@ -83,6 +83,15 @@ def _cmd_demo(args: argparse.Namespace) -> int:
     platform.register_mold("next-mold", cavity_count=4)
     platform.enqueue_mold("next-mold")
     openmold = platform.run_open("press-01")
+
+    # 开模顺序启动了冷却：按进出口温差自动调流量、按模积水量，直到模具凉透。
+    cooling_steps: list[dict] = []
+    for _ in range(120):
+        result = platform.cool_step("press-01", dt=5.0)
+        cooling_steps.append(result)
+        if result["ready"]["ready"]:
+            break
+    cooling_ready = platform.press("press-01").cooling.snapshot()
     dispatch = platform.run_dispatch("press-01")
     stop = platform.run_stop("press-01")
 
@@ -98,6 +107,9 @@ def _cmd_demo(args: argparse.Namespace) -> int:
         "setpoint_probe": setpoint_probe,
         "report_probe": report_probe,
         "open": openmold,
+        "cooling_steps": len(cooling_steps),
+        "cooling_ready": cooling_steps[-1]["ready"] if cooling_steps else None,
+        "cooling_snapshot": cooling_ready,
         "dispatch": dispatch,
         "stop": stop,
         "probe": probe,

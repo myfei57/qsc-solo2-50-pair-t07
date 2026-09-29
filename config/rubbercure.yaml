@@ -37,6 +37,9 @@ limits:
     alarm_inlet_c: 32.0
     alarm_outlet_c: 48.0
     drain_hold_s: 30.0
+    target_delta_c: 5.0
+    demold_temp_c: 80.0
+    ready_hold_s: 20.0
   batch:
     dispatch_window_s: 180.0
     max_queue: 12

@@ -118,6 +118,9 @@ class Platform:
             ("timer", "cure", "cure-timer"),
             ("timer", "latch", "cure-latch"),
             ("cool", "pump", "coolant-pump"),
+            ("cool", "valve", "coolant-flow-valve"),
+            ("cool", "meter", "coolant-water-meter"),
+            ("cool", "ready", "coolant-ready-hold"),
             ("batch", "queue", "dispatch-queue"),
             ("batch", "scheduler", "fleet-scheduler"),
             ("audit", "journal", "production-audit"),
@@ -249,6 +252,32 @@ class Platform:
             report["topology_missing"] = sequence.verify_topology(self.topology)
             return report
 
+    def cool_step(
+        self,
+        press_id: str = DEFAULT_PRESS_ID,
+        inlet_c: float | None = None,
+        outlet_c: float | None = None,
+        dt: float = 1.0,
+    ) -> dict:
+        """冷却调节单步：上报一组进出口水温，返回调流量、计水与到位结果。
+
+        冷却运行中才可调用；进出口水温缺省时按当前模温仿真一组，供无现场
+        仪表的演示环境把降温链路跑通。
+        """
+
+        unit = self.press(press_id)
+        if unit.cooling.phase.value != "circulating":
+            raise RubberCureError(f"{press_id} 冷却循环未运行", component="cool")
+        if inlet_c is None:
+            inlet_c = self.config.cool.alarm_inlet_c - 6.0
+        if outlet_c is None:
+            # 仿真：出水按 5% 速率向进水温度回落，模厚模薄由调用方直接给出读数。
+            previous = unit.cooling.circulation.outlet_c or self.config.temp.setpoint_c
+            floor = min(inlet_c + self.config.cool.target_delta_c,
+                        self.config.cool.demold_temp_c - 2.0)
+            outlet_c = floor + (previous - floor) * 0.95
+        return unit.cooling.regulate(float(inlet_c), float(outlet_c), float(dt))
+
     def run_open(self, press_id: str = DEFAULT_PRESS_ID) -> dict:
         """在一台硫化机上跑完整的开模顺序。"""
 
@@ -298,6 +327,13 @@ class Platform:
                 per_press.append(summary)
                 self.trend.append("mold_temp", moment, reading.average_c())
                 self.trend.append("steam_pressure", moment, unit.steam.pressure_kpa)
+                if unit.cooling.phase.value == "circulating":
+                    self.trend.append(
+                        "coolant_flow", moment, unit.cooling.circulation.flow_m3_h
+                    )
+                    self.trend.append(
+                        "coolant_volume", moment, unit.cooling.meter.snapshot()["volume_m3"]
+                    )
             self.trend.append("fleet_load", moment, len(self.fleet.idle_presses()) / self.fleet.size)
             return {
                 "cycle": self._cycles,
@@ -492,6 +528,8 @@ class Platform:
                 "/api/dispatch",
                 "/api/stop",
                 "/api/step",
+                "/api/cool",
+                "/api/water",
                 "/api/enqueue",
                 "/api/remap",
                 "/api/retire",

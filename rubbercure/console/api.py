@@ -145,6 +145,28 @@ class ConsoleAPI:
         except RubberCureError as error:
             return {"ok": False, "error": self.platform.note_error(error)}
 
+    def cool(self, payload: dict) -> dict:
+        """冷却调节单步：按上报的进出口水温自动调流量、计水量、判到位。"""
+
+        try:
+            result = self.platform.cool_step(
+                str(payload.get("press_id", "press-01")),
+                inlet_c=payload.get("inlet_c"),
+                outlet_c=payload.get("outlet_c"),
+                dt=float(payload.get("dt", 1.0)),
+            )
+            return {"ok": True, "cooling": result}
+        except RubberCureError as error:
+            return {"ok": False, "error": self.platform.note_error(error)}
+
+    def water(self, query: dict | None = None) -> dict:
+        """返回指定硫化机本模／上一模的冷却用水账单。"""
+
+        press_id = str((query or {}).get("press_id", "press-01"))
+        unit = self.platform.press(press_id)
+        meter = unit.cooling.meter.snapshot()
+        return {"press_id": press_id, "meter": meter}
+
     def enqueue(self, payload: dict) -> dict:
         mold_id = str(payload.get("mold_id", "mold-01"))
         try:

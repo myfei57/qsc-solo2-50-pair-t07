@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from rubbercure.config import (
+    CoolLimits,
     PlatformConfig,
     SteamLimits,
     config_to_mapping,
@@ -97,3 +98,29 @@ def test_default_config_storage_root_is_relative():
     assert not os.path.isabs(config.storage_root)
     assert config.steam.clamp_pressure(10_000.0) == config.steam.max_pressure_kpa
     assert config.steam.clamp_pressure(-5.0) == config.steam.min_pressure_kpa
+
+
+def test_cool_limits_carries_delta_target_and_demold_settings():
+    config = load_config(str(ROOT / "config" / "rubbercure.yaml"))
+    cool = config.cool
+    assert cool.target_delta_c == 5.0
+    assert cool.demold_temp_c == 80.0
+    assert cool.ready_hold_s == 20.0
+    mapping = config_to_mapping(config)["limits"]["cool"]
+    assert mapping["target_delta_c"] == 5.0
+
+
+def test_cool_limits_reject_demold_temp_below_outlet_alarm():
+    with pytest.raises(ConfigError):
+        CoolLimits.from_mapping(
+            {
+                "rated_flow_m3_h": 18.0,
+                "min_flow_m3_h": 6.0,
+                "alarm_inlet_c": 32.0,
+                "alarm_outlet_c": 48.0,
+                "drain_hold_s": 30.0,
+                "target_delta_c": 5.0,
+                "demold_temp_c": 40.0,
+                "ready_hold_s": 20.0,
+            }
+        )

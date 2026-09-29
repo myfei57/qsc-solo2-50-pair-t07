@@ -226,13 +226,21 @@ class TimerLimits:
 
 @dataclass(frozen=True)
 class CoolLimits:
-    """冷却水流量与温度限值。"""
+    """冷却水流量与温度限值。
+
+    调节阀按进出水温差闭环：温差大于 ``target_delta_c`` 开大、小了关小，
+    并夹在最小流量与额定流量之间。模具降到 ``demold_temp_c`` 且温差收敛后
+    保持 ``ready_hold_s`` 即判定可以停泵。
+    """
 
     rated_flow_m3_h: float
     min_flow_m3_h: float
     alarm_inlet_c: float
     alarm_outlet_c: float
     drain_hold_s: float
+    target_delta_c: float
+    demold_temp_c: float
+    ready_hold_s: float
 
     @classmethod
     def from_mapping(cls, section: Mapping[str, Any]) -> "CoolLimits":
@@ -242,11 +250,17 @@ class CoolLimits:
             alarm_inlet_c=_number(section, "alarm_inlet_c"),
             alarm_outlet_c=_number(section, "alarm_outlet_c"),
             drain_hold_s=_number(section, "drain_hold_s", minimum=0.0),
+            target_delta_c=_number(section, "target_delta_c", minimum=0.05),
+            demold_temp_c=_number(section, "demold_temp_c", minimum=0.0),
+            ready_hold_s=_number(section, "ready_hold_s", minimum=0.0),
         )
         if limits.min_flow_m3_h > limits.rated_flow_m3_h:
             raise ConfigError("冷却最小流量不得高于额定流量", component="config")
         if limits.alarm_inlet_c > limits.alarm_outlet_c:
             raise ConfigError("冷却进水告警温度不得高于出水告警温度", component="config")
+        if limits.demold_temp_c <= limits.alarm_outlet_c:
+            raise ConfigError("取件温度必须高于出水告警温度，否则冷却永远到不了位",
+                              component="config")
         return limits
 
     def as_dict(self) -> dict:
@@ -256,6 +270,9 @@ class CoolLimits:
             "alarm_inlet_c": self.alarm_inlet_c,
             "alarm_outlet_c": self.alarm_outlet_c,
             "drain_hold_s": self.drain_hold_s,
+            "target_delta_c": self.target_delta_c,
+            "demold_temp_c": self.demold_temp_c,
+            "ready_hold_s": self.ready_hold_s,
         }
 
 
@@ -377,6 +394,9 @@ def default_config() -> PlatformConfig:
             alarm_inlet_c=32.0,
             alarm_outlet_c=48.0,
             drain_hold_s=30.0,
+            target_delta_c=5.0,
+            demold_temp_c=80.0,
+            ready_hold_s=20.0,
         ),
         batch=BatchLimits(dispatch_window_s=180.0, max_queue=12),
         pages=("press", "steam", "timer", "alarms"),

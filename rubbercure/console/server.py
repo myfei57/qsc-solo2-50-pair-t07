@@ -84,6 +84,9 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(self.api.journal(segment=segment, limit=limit))
             elif parsed.path == "/api/readiness":
                 self._send_json(self.api.readiness())
+            elif parsed.path == "/api/water":
+                press_id = (query.get("press_id") or ["press-01"])[0]
+                self._send_json(self.api.water({"press_id": press_id}))
             elif parsed.path == "/":
                 self._send_html(render_page("press", self.platform))
             elif parsed.path.strip("/") in PAGE_TITLES:
@@ -106,6 +109,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(self.api.stop(self._read_json()))
             elif parsed.path == "/api/step":
                 self._send_json(self.api.step(self._read_json()))
+            elif parsed.path == "/api/cool":
+                self._send_json(self.api.cool(self._read_json()))
             elif parsed.path == "/api/enqueue":
                 self._send_json(self.api.enqueue(self._read_json()))
             elif parsed.path == "/api/remap":

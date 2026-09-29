@@ -1,8 +1,8 @@
 """冷却水循环。
 
-冷却水把硫化完的模具从工艺温度降到取件温度。循环泵只有运行与停止两态，
-流量与进出口水温由现场仪表上报。冷却回路要和蒸汽回路配合：蒸汽未停之前
-禁止停冷却，避免骤冷。
+冷却水把硫化完的模具从工艺温度降到取件温度。循环泵启动后按额定流量运转，
+调节阀可在运行中按进出水温差改流量（``apply_flow``），流量与进出口水温由
+现场仪表上报。冷却回路要和蒸汽回路配合：蒸汽未停之前禁止停冷却，避免骤冷。
 """
 
 from __future__ import annotations
@@ -36,6 +36,16 @@ class CoolantCirculation:
         with self._lock:
             return self._flow_m3_h
 
+    @property
+    def inlet_c(self) -> float:
+        with self._lock:
+            return self._inlet_c
+
+    @property
+    def outlet_c(self) -> float:
+        with self._lock:
+            return self._outlet_c
+
     def circulation_delta_c(self) -> float:
         with self._lock:
             return self._outlet_c - self._inlet_c
@@ -51,6 +61,28 @@ class CoolantCirculation:
             Event.of("cool", "cool", "coolant_started", subject="coolant-pump", flow_m3_h=round(flow, 2))
         )
         return flow
+
+    def apply_flow(self, flow_m3_h: float) -> float:
+        """运行中调整调节阀开度（流量），停泵时拒绝调整。"""
+
+        flow = float(flow_m3_h)
+        with self._lock:
+            if not self._running:
+                raise RuntimeError("循环泵未运行，不能调整流量")
+            changed = self._flow_m3_h != flow
+            self._flow_m3_h = flow
+            current = self._flow_m3_h
+        if changed:
+            self._bus.publish(
+                Event.of(
+                    "cool",
+                    "cool",
+                    "coolant_flow_adjusted",
+                    subject="coolant-pump",
+                    flow_m3_h=round(current, 3),
+                )
+            )
+        return current
 
     def sample(self, inlet_c: float, outlet_c: float) -> dict:
         """记录一组进出口温度。"""
